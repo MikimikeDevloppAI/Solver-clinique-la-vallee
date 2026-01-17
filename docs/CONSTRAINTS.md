@@ -48,6 +48,7 @@ for each violation → -100h
 |----|------------|-------|----------|
 | H1 | **Conflit temporel** | 1 ressource = 1 shift max par période | -100h par conflit |
 | H2 | **Éligibilité Skill** | Ressource doit posséder le skill requis | -100h par violation |
+| H2b | **Éligibilité Site** | Ressource doit avoir le site dans ses préférences | -100h par violation |
 | H3 | **Exclusion Bloc-Site distant** | Bloc + Site distant même jour = interdit | -100h par violation |
 | H4 | **Florence Bron 2F mardi** | Interdiction absolue | -100h |
 | H5 | **Lucie Pratillo 2F/3F** | Interdiction absolue | -100h |
@@ -74,6 +75,24 @@ La ressource doit avoir le skill dans ses préférences pour être assignée.
 Violation : Pierre assigné à Accueil Dermato mais n'a pas ce skill
 Pénalité : -100h
 ```
+
+**Pour le Bloc Opératoire** : La ressource doit avoir une préférence pour le `besoin_operation` requis.
+
+```
+Violation : Marie assignée comme Instrumentiste mais n'a pas ce besoin_operation
+Pénalité : -100h
+```
+
+### H2b - Éligibilité Site
+
+La ressource doit avoir le site dans ses préférences (P1, P2, P3 ou P4) pour être assignée.
+
+```
+Violation : Pierre assigné à Porrentruy mais n'a pas ce site dans ses préférences
+Pénalité : -100h
+```
+
+**Note** : Une ressource sans préférence de site pour un emplacement donné ne peut PAS y être assignée.
 
 ### H3 - Exclusion Bloc-Site Distant
 

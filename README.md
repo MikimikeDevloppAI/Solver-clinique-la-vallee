@@ -57,15 +57,16 @@ HARD > MEDIUM > SOFT
 
 | Document | Description |
 |----------|-------------|
-| [docs/INPUT_SCHEMA.md](docs/INPUT_SCHEMA.md) | Structure des données d'entrée |
-| [docs/OUTPUT_SCHEMA.md](docs/OUTPUT_SCHEMA.md) | Structure des données de sortie |
+| [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) | Structure de la base de données |
 | [docs/CONSTRAINTS.md](docs/CONSTRAINTS.md) | Règles et contraintes de scoring |
+| [docs/OUTPUT_SCHEMA.md](docs/OUTPUT_SCHEMA.md) | Structure des données de sortie |
 
 ## Contraintes Principales
 
-### Hard (8 contraintes, -100h chacune)
+### Hard (9 contraintes, -100h chacune)
 - Conflit temporel
 - Éligibilité skill
+- Éligibilité site
 - Exclusion Bloc-Site distant
 - Jours exacts (ressources flexibles)
 - Absences
