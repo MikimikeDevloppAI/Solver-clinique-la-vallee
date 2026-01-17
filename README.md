@@ -57,9 +57,10 @@ HARD > MEDIUM > SOFT
 
 | Document | Description |
 |----------|-------------|
-| [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) | Structure de la base de données |
-| [docs/CONSTRAINTS.md](docs/CONSTRAINTS.md) | Règles et contraintes de scoring |
-| [docs/OUTPUT_SCHEMA.md](docs/OUTPUT_SCHEMA.md) | Structure des données de sortie |
+| [docs/1_DOMAIN_MODEL.md](docs/1_DOMAIN_MODEL.md) | Modèle de données (tables, relations) |
+| [docs/2_NEEDS_CALCULATION.md](docs/2_NEEDS_CALCULATION.md) | Calcul des besoins en secrétaires |
+| [docs/3_CONSTRAINTS.md](docs/3_CONSTRAINTS.md) | Règles et contraintes de scoring |
+| [docs/4_OUTPUT.md](docs/4_OUTPUT.md) | Format de sortie du solveur |
 
 ## Contraintes Principales
 
