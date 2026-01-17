@@ -1,461 +1,464 @@
-# Contraintes et Règles de Scoring OptaPlanner
+# Constraints and Scoring Rules
 
-Ce document décrit **toutes les contraintes** et règles de scoring du solveur.
+This document describes **all constraints** and scoring rules for the OptaPlanner solver.
 
 ---
 
-# 1. STRUCTURE DU SCORE
+# 1. SCORE STRUCTURE
 
 ## 1.1 HardMediumSoftScore
 
-OptaPlanner utilise une **comparaison lexicographique** sur 3 niveaux :
+OptaPlanner uses **lexicographic comparison** on 3 levels:
 
 ```
 Score = (Hard, Medium, Soft)
 
-Comparaison :
-  (0, 0, -1000) > (-1, 0, +999999)   // Hard prime sur tout
-  (0, 0, -1000) > (0, -1, +999999)   // Medium prime sur Soft
+Comparison:
+  (0, 0, -1000) > (-1, 0, +999999)   // Hard dominates everything
+  (0, 0, -1000) > (0, -1, +999999)   // Medium dominates Soft
 ```
 
-| Niveau | Rôle | Objectif |
-|--------|------|----------|
-| **HARD** | Faisabilité | = 0 obligatoire |
-| **MEDIUM** | Couverture | = 0 souhaitable |
-| **SOFT** | Qualité | Maximiser |
+| Level | Role | Goal |
+|-------|------|------|
+| **HARD** | Feasibility | Must = 0 |
+| **MEDIUM** | Coverage | Should = 0 |
+| **SOFT** | Quality | Maximize |
 
-## 1.2 Principe du Degré de Violation
+## 1.2 Violation Degree Principle
 
-Toujours spécifier le **degré** de violation pour guider le solveur :
+Always specify the **degree** of violation to guide the solver:
 
 ```java
-// MAUVAIS : pas de gradient
+// BAD: no gradient
 if (violation) → -100h
 
-// BON : gradient pour le solveur
+// GOOD: gradient for solver
 for each violation → -100h
 ```
 
 ---
 
-# 2. CONTRAINTES HARD (Faisabilité)
+# 2. HARD CONSTRAINTS (Feasibility)
 
-**Score hard < 0 = solution INVALIDE**
+**Hard score < 0 = INVALID solution**
 
-## 2.1 Liste Complète
+## 2.1 Complete List
 
-| ID | Contrainte | Règle | Pénalité |
-|----|------------|-------|----------|
-| H1 | **Conflit temporel** | 1 ressource = 1 shift max par période | -100h par conflit |
-| H2 | **Éligibilité Skill** | Ressource doit posséder le skill requis | -100h par violation |
-| H2b | **Éligibilité Site** | Ressource doit avoir le site dans ses préférences | -100h par violation |
-| H3 | **Exclusion Bloc-Site distant** | Bloc + Site distant même jour = interdit | -100h par violation |
-| H4 | **Florence Bron 2F mardi** | Interdiction absolue | -100h |
-| H5 | **Lucie Pratillo 2F/3F** | Interdiction absolue | -100h |
-| H6 | **Jours exacts (flexible)** | Ressource flexible = exactement `nombre_jours_semaine` | -100h par jour de différence |
-| H7 | **Absence** | Ressource ne peut pas être assignée sur créneau d'absence | -100h par violation |
-| H8 | **Continuité fermeture** | 1R/2F = même personne matin ET après-midi | -100h par violation |
+| ID | Constraint | Rule | Penalty |
+|----|------------|------|---------|
+| H1 | **Time conflict** | 1 staff = 1 shift max per period | -100h per conflict |
+| H2 | **Skill eligibility** | Staff must have the required skill | -100h per violation |
+| H2b | **Site eligibility** | Staff must have the site in preferences | -100h per violation |
+| H3 | **Surgical-Distant exclusion** | Surgical + Distant site same day = forbidden | -100h per violation |
+| H4 | **Florence Bron 2F Tuesday** | Absolute prohibition | -100h |
+| H5 | **Lucie Pratillo 2F/3F** | Absolute prohibition | -100h |
+| H6 | **Exact days (flexible)** | Flexible staff = exactly `days_per_week` | -100h per day difference |
+| H7 | **Absence** | Staff cannot be assigned during absence | -100h per violation |
+| H8 | **Closing continuity** | 1R/2F = same person morning AND afternoon | -100h per violation |
 
-## 2.2 Détails des Contraintes
+## 2.2 Constraint Details
 
-### H1 - Conflit Temporel
+### H1 - Time Conflict
 
-Une ressource ne peut être assignée qu'à **1 seul shift** par période.
-
-```
-Violation : Marie assignée à Ophtalmo ET Dermato le lundi matin
-Pénalité : -100h
-```
-
-### H2 - Éligibilité Skill
-
-La ressource doit avoir le skill dans ses préférences pour être assignée.
+A staff member can only be assigned to **1 shift** per period.
 
 ```
-Violation : Pierre assigné à Accueil Dermato mais n'a pas ce skill
-Pénalité : -100h
+Violation: Marie assigned to Ophtalmo AND Dermato Monday morning
+Penalty: -100h
 ```
 
-**Pour le Bloc Opératoire** : La ressource doit avoir une préférence pour le `besoin_operation` requis.
+### H2 - Skill Eligibility
+
+Staff must have the skill in their preferences to be assigned.
 
 ```
-Violation : Marie assignée comme Instrumentiste mais n'a pas ce besoin_operation
-Pénalité : -100h
+Violation: Pierre assigned to Accueil Dermato but doesn't have this skill
+Penalty: -100h
 ```
 
-### H2b - Éligibilité Site
-
-La ressource doit avoir le site dans ses préférences (P1, P2, P3 ou P4) pour être assignée.
+**For Surgical Block**: Staff must have a preference for the required skill (e.g., Instrumentiste, Circulante).
 
 ```
-Violation : Pierre assigné à Porrentruy mais n'a pas ce site dans ses préférences
-Pénalité : -100h
+Violation: Marie assigned as Instrumentiste but doesn't have this skill in preferences
+Penalty: -100h
 ```
 
-**Note** : Une ressource sans préférence de site pour un emplacement donné ne peut PAS y être assignée.
+**Note**: Skills are unified - same eligibility check for consultation and surgical skills.
 
-### H3 - Exclusion Bloc-Site Distant
+### H2b - Site Eligibility
 
-Combinaisons **interdites** le même jour :
-
-| Matin | Après-midi | Interdit |
-|-------|------------|----------|
-| Bloc opératoire | Porrentruy | ✓ |
-| Bloc opératoire | Vieille Ville | ✓ |
-| Porrentruy | Bloc opératoire | ✓ |
-| Vieille Ville | Bloc opératoire | ✓ |
-
-### H4 & H5 - Règles Individuelles
-
-| Ressource | UUID | Interdiction |
-|-----------|------|--------------|
-| Florence Bron | `1e5339aa-5e82-4295-b918-e15a580b3396` | 2F le mardi |
-| Lucie Pratillo | `5d3af9e3-674b-48d6-b54f-bd84c9eee670` | 2F et 3F toujours |
-
-### H6 - Jours Exacts (Ressources Flexibles)
-
-Pour `horaire_flexible = true` :
+Staff must have the site in preferences (P1, P2, P3 or P4) to be assigned.
 
 ```
-nombre_jours_assignés DOIT == nombre_jours_semaine
+Violation: Pierre assigned to Porrentruy but doesn't have this site in preferences
+Penalty: -100h
+```
 
-Exemple :
-  Marie : nombre_jours_semaine = 4
-  Assignée 3 jours → -100h (1 jour de différence)
-  Assignée 5 jours → -100h (1 jour de différence)
+**Note**: Staff without site preference for a location CANNOT be assigned there.
+
+### H3 - Surgical-Distant Site Exclusion
+
+**Forbidden** combinations on the same day:
+
+| Morning | Afternoon | Forbidden |
+|---------|-----------|-----------|
+| Surgical block | Porrentruy | ✓ |
+| Surgical block | Vieille Ville | ✓ |
+| Porrentruy | Surgical block | ✓ |
+| Vieille Ville | Surgical block | ✓ |
+
+### H4 & H5 - Individual Rules
+
+| Staff | ID | Prohibition |
+|-------|-----|-------------|
+| Florence Bron | `1e5339aa-5e82-4295-b918-e15a580b3396` | 2F on Tuesday |
+| Lucie Pratillo | `5d3af9e3-674b-48d6-b54f-bd84c9eee670` | 2F and 3F always |
+
+### H6 - Exact Days (Flexible Staff)
+
+For `has_flexible_schedule = true`:
+
+```
+days_assigned MUST == days_per_week
+
+Example:
+  Marie: days_per_week = 4
+  Assigned 3 days → -100h (1 day difference)
+  Assigned 5 days → -100h (1 day difference)
 ```
 
 ### H7 - Absence
 
-Une ressource avec absence ne peut **jamais** être assignée sur ce créneau.
+Staff with absence can **never** be assigned during that slot.
 
 ```
-Marie : absence mercredi (jour complet)
-Violation : Marie assignée mercredi matin
-Pénalité : -100h
+Marie: absence Wednesday (full day)
+Violation: Marie assigned Wednesday morning
+Penalty: -100h
 ```
 
-### H8 - Continuité Fermeture
+### H8 - Closing Continuity
 
-Sur un site avec fermeture, si médecins présents **matin ET après-midi** :
-
-```
-Les rôles 1R et 2F doivent être la MÊME personne toute la journée
-
-Exemple (VALIDE) :
-  Ophtalmo lundi matin : Marie (1R), Pierre (2F)
-  Ophtalmo lundi PM : Marie (1R), Pierre (2F) ✓
-
-Exemple (INVALIDE) :
-  Ophtalmo lundi matin : Marie (1R), Pierre (2F)
-  Ophtalmo lundi PM : Anna (1R), Luc (2F) ✗ → -200h (2 violations)
-```
-
----
-
-# 3. CONTRAINTES MEDIUM (Couverture)
-
-**Score medium < 0 = besoins non satisfaits**
-
-## 3.1 Liste Complète
-
-| ID | Contrainte | Règle | Pénalité |
-|----|------------|-------|----------|
-| M1 | **Skill manquant** | Chaque skill requis doit être couvert | **-1000m** par skill |
-| M2 | **Fermeture non couverte** | Sites avec fermeture sans 1R ou 2F | **-1000m** par rôle |
-
-## 3.2 Justification de -1000m
-
-La pénalité Medium doit être **supérieure** au pire cumul Soft :
+At a location with closing, if physicians present **morning AND afternoon**:
 
 ```
-Pire cumul Soft ≈ 810 :
-  - P234 jour 5+ : -200
-  - Fermeture palier 4 : -500
-  - Cumul : -50
-  - Changement site : -20
-  - Perte préférence : -40
+1R and 2F roles must be the SAME person all day
 
-Avec -1000m :
-  Le solveur préfère TOUJOURS remplir un shift (même avec -810 soft)
-  plutôt que le laisser vide (-1000m) et mettre la ressource en Admin (+15 soft)
-```
+Example (VALID):
+  Ophtalmo Monday morning: Marie (1R), Pierre (2F)
+  Ophtalmo Monday PM: Marie (1R), Pierre (2F) ✓
 
-## 3.3 Exemples
-
-### M1 - Skill Manquant
-
-```
-Dermato lundi matin avec 2 médecins :
-  Besoin : 2 Aide Dermato + 2 Accueil Dermato = 4 personnes
-  Assigné : 2 Aide + 1 Accueil = 3 personnes
-
-  Violation : 1 Accueil Dermato manquant
-  Pénalité : -1000m
-```
-
-### M2 - Fermeture Non Couverte
-
-```
-Ophtalmologie lundi (médecins matin + PM) :
-  Besoin : 1R + 2F
-  Assigné : 1R uniquement
-
-  Violation : 2F manquant
-  Pénalité : -1000m
+Example (INVALID):
+  Ophtalmo Monday morning: Marie (1R), Pierre (2F)
+  Ophtalmo Monday PM: Anna (1R), Luc (2F) ✗ → -200h (2 violations)
 ```
 
 ---
 
-# 4. CONTRAINTES SOFT (Qualité)
+# 3. MEDIUM CONSTRAINTS (Coverage)
 
-**Score soft = qualité de la solution**
+**Medium score < 0 = unmet needs**
 
-## 4.1 Préférences (3 Dimensions)
+## 3.1 Complete List
 
-On prend le **MAX** des 3 scores pour chaque assignation.
+| ID | Constraint | Rule | Penalty |
+|----|------------|------|---------|
+| M1 | **Missing skill** | Each required skill must be covered | **-1000m** per skill |
+| M2 | **Uncovered closing** | Sites with closing missing 1R or 2F | **-1000m** per role |
+
+## 3.2 Justification for -1000m
+
+Medium penalty must be **greater than** worst Soft accumulation:
+
+```
+Worst Soft accumulation ≈ 810:
+  - P234 day 5+: -200
+  - Closing tier 4: -500
+  - Cumulative: -50
+  - Site change: -20
+  - Lost preference: -40
+
+With -1000m:
+  Solver ALWAYS prefers filling a shift (even with -810 soft)
+  rather than leaving it empty (-1000m) and putting staff in Admin (+15 soft)
+```
+
+## 3.3 Examples
+
+### M1 - Missing Skill
+
+```
+Dermato Monday morning with 2 physicians:
+  Need: 2 Aide Dermato + 2 Accueil Dermato = 4 staff
+  Assigned: 2 Aide + 1 Accueil = 3 staff
+
+  Violation: 1 Accueil Dermato missing
+  Penalty: -1000m
+```
+
+### M2 - Uncovered Closing
+
+```
+Ophtalmo Monday (physicians morning + PM):
+  Need: 1R + 2F
+  Assigned: 1R only
+
+  Violation: 2F missing
+  Penalty: -1000m
+```
+
+---
+
+# 4. SOFT CONSTRAINTS (Quality)
+
+**Soft score = solution quality**
+
+## 4.1 Preferences (3 Dimensions)
+
+Take the **MAX** of 3 scores for each assignment.
 
 | Dimension | P1 | P2 | P3 | P4 |
 |-----------|-----|-----|-----|-----|
 | **Skill** | +100 | +80 | +60 | - |
-| **Médecin** | +70 | +50 | - | - |
+| **Physician** | +70 | +50 | - | - |
 | **Site** | +40 | +35 | +30 | +25 |
 
 ```
-Score_Assignation = max(Score_Skill, Score_Médecin, Score_Site)
+Assignment_Score = max(Skill_Score, Physician_Score, Site_Score)
 ```
 
-**Exemple** :
+**Example**:
 ```
-Marie assignée à Ophtalmo La Vallée avec Dr. Martin :
-  - Skill Accueil Ophtalmo : P1 → +100
-  - Site La Vallée : P1 → +40
-  - Médecin Dr. Martin : P2 → +50
+Marie assigned to Ophtalmo La Vallée with Dr. Martin:
+  - Skill Accueil Ophtalmo: P1 → +100
+  - Site La Vallée: P1 → +40
+  - Physician Dr. Martin: P2 → +50
 
 Score = max(100, 40, 50) = +100 soft
 ```
 
-## 4.2 Continuité de Site
+## 4.2 Site Continuity
 
 | Situation | Score |
 |-----------|-------|
-| Même site matin + après-midi | **+20** |
-| Changement de site | **-20** |
-| Admin impliqué (un côté ou l'autre) | **0** |
+| Same site morning + afternoon | **+20** |
+| Site change | **-20** |
+| Admin involved (either side) | **0** |
 
 ```
-Marie : Ophtalmo matin + Ophtalmo PM → +20 soft
-Pierre : Dermato matin + Porrentruy PM → -20 soft
-Anna : Ophtalmo matin + Admin PM → 0 soft
+Marie: Ophtalmo morning + Ophtalmo PM → +20 soft
+Pierre: Dermato morning + Porrentruy PM → -20 soft
+Anna: Ophtalmo morning + Admin PM → 0 soft
 ```
 
-## 4.3 Équité de Charge (Fairness)
+## 4.3 Load Fairness
 
-**Formule quadratique** pour inciter à l'équilibrage :
-
-```
-score_fairness -= Σ (charge_r)²
-```
-
-**Pourquoi quadratique ?**
-```
-Transférer 1 shift de Marie (5 shifts) vers Pierre (2 shifts) :
-  Avant : 5² + 2² = 29
-  Après : 4² + 3² = 25
-  Amélioration : +4 soft ✓
-```
-
-## 4.4 Équilibrage Sites Distants (P234)
-
-Pour ressources dont le site est en P2/P3/P4 :
-
-| Jour # au site distant | Pénalité |
-|------------------------|----------|
-| 1er | 0 |
-| 2ème | -20 |
-| 3ème | -50 |
-| 4ème | -100 |
-| 5ème+ | -200 |
+**Quadratic formula** to encourage balancing:
 
 ```
-Marie (Porrentruy = P3) :
-  Jour 1 : 0
-  Jour 2 : -20
-  Jour 3 : -50
-  Total si 3 jours : -70 soft
+fairness_score -= Σ (load_r)²
 ```
 
-## 4.5 Équilibrage Rôles Fermeture
+**Why quadratic?**
+```
+Transfer 1 shift from Marie (5 shifts) to Pierre (2 shifts):
+  Before: 5² + 2² = 29
+  After: 4² + 3² = 25
+  Improvement: +4 soft ✓
+```
 
-**Score de charge** = jours_1R × 10 + jours_2F × 12
+## 4.4 Distant Site Balancing (P234)
 
-| Score | Pénalité |
-|-------|----------|
+For staff whose site is P2/P3/P4:
+
+| Day # at distant site | Penalty |
+|-----------------------|---------|
+| 1st | 0 |
+| 2nd | -20 |
+| 3rd | -50 |
+| 4th | -100 |
+| 5th+ | -200 |
+
+```
+Marie (Porrentruy = P3):
+  Day 1: 0
+  Day 2: -20
+  Day 3: -50
+  Total if 3 days: -70 soft
+```
+
+## 4.5 Closing Role Balancing
+
+**Load score** = days_1R × 10 + days_2F × 12
+
+| Score | Penalty |
+|-------|---------|
 | ≤ 22 | 0 |
 | 23-29 | -30 |
 | 30-31 | -80 |
 | 32-35 | -150 |
 | > 35 | -500 |
 
-*Seul le palier le plus élevé s'applique.*
+*Only the highest tier applies.*
 
 ```
-Marie cette semaine : 2 jours 1R + 1 jour 2F
+Marie this week: 2 days 1R + 1 day 2F
 Score = 2×10 + 1×12 = 32 → -150 soft
 ```
 
-## 4.6 Bonus Administratif
+## 4.6 Admin Bonus
 
-### Ressources avec `prefered_admin = true`
+### Staff with `prefers_admin = true`
 
 | Condition | Bonus |
 |-----------|-------|
-| Shift admin jusqu'à `nombre_demi_journees_admin` | +15 par shift |
-| Shift admin au-delà | +5 par shift |
+| Admin shift up to `admin_half_days_target` | +15 per shift |
+| Admin shift beyond | +5 per shift |
 
-### Ressources avec `prefered_admin = false`
+### Staff with `prefers_admin = false`
 
-Score décroissant : +10, +9, +8, +7...
+Decreasing score: +10, +9, +8, +7...
 
 ```
-Pierre (prefered_admin = false), 3 shifts admin :
-  Shift 1 : +10
-  Shift 2 : +9
-  Shift 3 : +8
-  Total : +27 soft
+Pierre (prefers_admin = false), 3 admin shifts:
+  Shift 1: +10
+  Shift 2: +9
+  Shift 3: +8
+  Total: +27 soft
 ```
 
-## 4.7 Cumul P234 + Fermeture
+## 4.7 P234 + Closing Cumulative
 
-Si une ressource a **simultanément** :
-- Pénalité P234 active (≥2 jours site distant)
-- Pénalité fermeture active (score > 22)
+If a staff member has **simultaneously**:
+- Active P234 penalty (≥2 days at distant site)
+- Active closing penalty (score > 22)
 
-**Pénalité additionnelle** : -50 soft
+**Additional penalty**: -50 soft
 
-## 4.8 Préférence Admin pour Rôle Fermeture (Demi-journée)
+## 4.8 Admin Preference for Closing Role (Half-day)
 
-Si le site avec fermeture n'a des médecins que **matin OU après-midi** :
+If a site with closing has physicians only **morning OR afternoon**:
 
 | Situation | Bonus |
 |-----------|-------|
-| Ressource 1R/2F le matin → Admin l'après-midi | +30 |
-| Ressource 1R/2F l'après-midi → Admin le matin | +30 |
+| Staff 1R/2F in morning → Admin in afternoon | +30 |
+| Staff 1R/2F in afternoon → Admin in morning | +30 |
 
 ---
 
-# 5. RÈGLES SPÉCIALES
+# 5. SPECIAL RULES
 
-## 5.1 Paul Jacquier et le rôle 3F
+## 5.1 Paul Jacquier and 3F Role
 
-| Ressource | UUID |
-|-----------|------|
+| Staff | ID |
+|-------|-----|
 | Paul Jacquier | `121dc7d9-99dc-46bd-9b6c-d240ac6dc6c8` |
 
-**Règle** : Si Paul Jacquier est présent **jeudi ET vendredi** sur un site avec fermeture, un rôle **3F** est requis.
+**Rule**: If Paul Jacquier is present **Thursday AND Friday** at a location with closing, a **3F** role is required.
 
-## 5.2 Bonus Médecin-Secrétaire
+## 5.2 Physician-Staff Bonus
 
-| Médecin | Secrétaires | Bonus |
-|---------|-------------|-------|
+| Physician | Staff | Bonus |
+|-----------|-------|-------|
 | Dr. fda323f4 (`fda323f4-3efd-4c78-8b63-7d660fcd7eea`) | Sara Bortolon, Mirlinda Hasani | +50 soft |
 
-| Secrétaire | UUID |
-|------------|------|
+| Staff | ID |
+|-------|-----|
 | Sara Bortolon | `68e74e31-12a7-4fd3-836d-41e8abf57792` |
 | Mirlinda Hasani | `324639fa-2e3d-4903-a143-323a17b0d988` |
 
-## 5.3 Obstétricienne seule sur site Ophtalmologie
+## 5.3 Obstetrician Alone at Ophtalmo Site
 
-Si un site Ophtalmo n'a **aucun médecin standard** mais a **≥1 obstétricienne** :
+If an Ophtalmo site has **no standard physicians** but has **≥1 obstetrician**:
 
 ```
-Demande = 1 Accueil Ophtalmo (au lieu de 0)
+Demand = 1 Accueil Ophtalmo (instead of 0)
 ```
 
 ---
 
-# 6. RÉCAPITULATIF DES SCORES
+# 6. SCORE SUMMARY
 
-## 6.1 Contraintes Hard (-100h chacune)
+## 6.1 Hard Constraints (-100h each)
 
-- H1: Conflit temporel
-- H2: Éligibilité skill
-- H3: Exclusion Bloc-Site distant
-- H4: Florence Bron 2F mardi
+- H1: Time conflict
+- H2: Skill eligibility
+- H2b: Site eligibility
+- H3: Surgical-Distant exclusion
+- H4: Florence Bron 2F Tuesday
 - H5: Lucie Pratillo 2F/3F
-- H6: Jours exacts (flexible)
+- H6: Exact days (flexible)
 - H7: Absence
-- H8: Continuité fermeture
+- H8: Closing continuity
 
-## 6.2 Contraintes Medium
+## 6.2 Medium Constraints
 
-| Contrainte | Pénalité |
-|------------|----------|
-| Skill manquant | -1000m |
-| Rôle fermeture manquant | -1000m |
+| Constraint | Penalty |
+|------------|---------|
+| Missing skill | -1000m |
+| Missing closing role | -1000m |
 
-## 6.3 Contraintes Soft - Bonus
+## 6.3 Soft Constraints - Bonuses
 
-| Élément | Score |
+| Element | Score |
 |---------|-------|
 | Skill P1 | +100 |
 | Skill P2 | +80 |
 | Skill P3 | +60 |
-| Médecin P1 | +70 |
-| Médecin P2 | +50 |
+| Physician P1 | +70 |
+| Physician P2 | +50 |
 | Site P1 | +40 |
 | Site P2 | +35 |
 | Site P3 | +30 |
 | Site P4 | +25 |
-| Continuité site | +20 |
-| Admin (préféré) | +15 |
-| Admin (non préféré) | +10 décroissant |
-| Admin si rôle fermeture demi-journée | +30 |
-| Bonus Dr. fda323f4 | +50 |
+| Site continuity | +20 |
+| Admin (preferred) | +15 |
+| Admin (not preferred) | +10 decreasing |
+| Admin if closing role half-day | +30 |
+| Dr. fda323f4 bonus | +50 |
 
-## 6.4 Contraintes Soft - Pénalités
+## 6.4 Soft Constraints - Penalties
 
-| Élément | Score |
+| Element | Score |
 |---------|-------|
-| Changement de site | -20 |
-| P234 jour 2 | -20 |
-| P234 jour 3 | -50 |
-| P234 jour 4 | -100 |
-| P234 jour 5+ | -200 |
-| Fermeture palier 1 (23-29) | -30 |
-| Fermeture palier 2 (30-31) | -80 |
-| Fermeture palier 3 (32-35) | -150 |
-| Fermeture palier 4 (>35) | -500 |
-| Cumul P234 + fermeture | -50 |
-| Fairness | -Σ(charge²) |
+| Site change | -20 |
+| P234 day 2 | -20 |
+| P234 day 3 | -50 |
+| P234 day 4 | -100 |
+| P234 day 5+ | -200 |
+| Closing tier 1 (23-29) | -30 |
+| Closing tier 2 (30-31) | -80 |
+| Closing tier 3 (32-35) | -150 |
+| Closing tier 4 (>35) | -500 |
+| P234 + closing cumulative | -50 |
+| Fairness | -Σ(load²) |
 
 ---
 
-# 7. FORMULE GLOBALE
+# 7. GLOBAL FORMULA
 
 ```
 Score = HardMediumSoftScore(
 
-   hard = Σ violations_H1_à_H8 × (-100),
+   hard = Σ violations_H1_to_H8 × (-100),
 
-   medium = Σ skills_manquants × (-1000)
-          + Σ rôles_fermeture_manquants × (-1000),
+   medium = Σ missing_skills × (-1000)
+          + Σ missing_closing_roles × (-1000),
 
-   soft = Σ max(score_skill, score_médecin, score_site)  // Préférences
-        + Σ bonus_continuité_site                         // +20 si même site
-        + Σ bonus_admin                                   // +15 ou décroissant
-        + Σ bonus_fermeture_admin                         // +30 si demi-journée
-        + Σ bonus_médecin_spécial                         // +50 Dr. fda323f4
-        - Σ pénalités_changement_site                     // -20
-        - Σ pénalités_P234                                // -20 à -200
-        - Σ pénalités_fermeture                           // -30 à -500
-        - Σ pénalités_cumul                               // -50
-        - Σ (charge_r)²                                   // Fairness quadratique
+   soft = Σ max(skill_score, physician_score, site_score)  // Preferences
+        + Σ site_continuity_bonus                           // +20 if same site
+        + Σ admin_bonus                                     // +15 or decreasing
+        + Σ closing_admin_bonus                             // +30 if half-day
+        + Σ special_physician_bonus                         // +50 Dr. fda323f4
+        - Σ site_change_penalties                           // -20
+        - Σ P234_penalties                                  // -20 to -200
+        - Σ closing_penalties                               // -30 to -500
+        - Σ cumulative_penalties                            // -50
+        - Σ (load_r)²                                       // Quadratic fairness
 )
 ```
 
 ---
 
-*Document de spécification des contraintes OptaPlanner*
-*Voir aussi : INPUT_SCHEMA.md, OUTPUT_SCHEMA.md*
+*OptaPlanner constraint specification document*
+*See also: 1_DOMAIN_MODEL.md, 2_NEEDS_CALCULATION.md, 4_OUTPUT.md*

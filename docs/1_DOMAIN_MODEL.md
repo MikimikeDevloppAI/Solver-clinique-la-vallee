@@ -1,286 +1,298 @@
-# Modèle de Données - Planification des Secrétaires Médicales
+# Domain Model - Medical Staff Scheduling
 
-Ce document décrit la structure des données pour le solveur OptaPlanner.
+This document describes the data model for the OptaPlanner solver.
 
 ---
 
-## Vue d'Ensemble
+## Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      MODÈLE DE DONNÉES                          │
+│                        DATA MODEL                               │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│  STRUCTURE GÉOGRAPHIQUE                                         │
-│  =====================                                          │
+│  GEOGRAPHIC STRUCTURE                                           │
+│  ====================                                           │
 │  sites                                                          │
-│    └── emplacements                                             │
-│          └── specialites                                        │
-│                └── skills                                       │
+│    └── locations                                                │
+│          └── specialties                                        │
+│                └── skills (unified)                             │
 │                                                                  │
-│  PERSONNES                                                      │
-│  =========                                                      │
-│  medecins (besoin_secretaires, specialite)                      │
-│  secretaires (préférences, disponibilités)                      │
+│  PEOPLE                                                         │
+│  ======                                                         │
+│  physicians (staff_requirement, specialty)                      │
+│  staff_members (preferences, availability)                      │
 │                                                                  │
-│  PLANNING UNIFIÉ                                                │
-│  ===============                                                │
-│  planning                                                       │
-│    ├── type = 'medecin' | 'secretaire'                          │
-│    ├── personne_id                                              │
-│    ├── site_id, date, demi_journee                              │
-│    └── skill_id, operation_id (selon contexte)                  │
+│  UNIFIED SCHEDULE                                               │
+│  ================                                               │
+│  assignments                                                    │
+│    ├── type = 'physician' | 'staff'                             │
+│    ├── person_id                                                │
+│    ├── location_id, date, period                                │
+│    └── skill_id, procedure_id (context-dependent)               │
 │                                                                  │
-│  BLOC OPÉRATOIRE                                                │
-│  ===============                                                │
-│  operations                                                     │
-│  types_intervention → besoins_personnel                         │
-│  besoins_operations                                             │
+│  SURGICAL BLOCK                                                 │
+│  ==============                                                 │
+│  surgical_procedures                                            │
+│  procedure_types → procedure_type_skills                        │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+**Key concept**: Skills are unified - consultation skills (Accueil Ophtalmo) and surgical roles (Instrumentiste) are ALL entries in the same `skills` table.
+
 ---
 
-# 1. STRUCTURE GÉOGRAPHIQUE
+# 1. GEOGRAPHIC STRUCTURE
 
-## 1.1 Sites
+## 1.1 Table: `sites`
 
-Les **sites** sont les lieux géographiques où travaillent les personnes.
+Geographic places where staff work.
 
-| ID | Nom | Type distance |
-|----|-----|---------------|
-| `site-la-vallee` | Clinique La Vallée | reference (site principal) |
+| id | name | distance_type |
+|----|------|---------------|
+| `site-la-vallee` | Clinique La Vallée | reference (main site) |
 | `site-porrentruy` | Porrentruy | distant |
-| `site-vieille-ville` | Vieille Ville Delémont | proche |
+| `site-vieille-ville` | Vieille Ville Delémont | nearby |
 
-**Champs** : id, nom, adresse, distance_type
-
----
-
-## 1.2 Emplacements
-
-Les **emplacements** sont les services/départements dans un site.
-
-| UUID | Nom | Site | Type | Fermeture |
-|------|-----|------|------|-----------|
-| `7c8abe96-0a6b-44eb-857f-ad69036ebc88` | Ophtalmologie | La Vallée | consultation | ✓ |
-| `d82c55ee-2964-49d4-a578-417b55b557ec` | Dermatologie | La Vallée | consultation | ✗ |
-| `c3bd13...` | Angiologie | La Vallée | consultation | ✗ |
-| `0e1b31...` | Rhumatologie | La Vallée | consultation | ✗ |
-| `86f1047f-c4ff-441f-a064-42ee2f8ef37a` | Bloc opératoire | La Vallée | bloc | ✗ |
-| `7723c334-d06c-413d-96f0-be281d76520d` | Gastroentérologie | Vieille Ville | consultation | ✗ |
-| `043899a1-a232-4c4b-9d7d-0eb44dad00ad` | Porrentruy | Porrentruy | consultation | ✓ |
-| `00000000-0000-0000-0000-000000000001` | Administratif | - | admin | ✗ |
-
-**Champs** : id, nom, site_id, type, specialite_id, fermeture
-
-### Types d'emplacements
-
-| Type | Description | Emplacements | Caractéristique |
-|------|-------------|--------------|-----------------|
-| **A** | Ratio fixe Aide/Accueil | Gastro, Dermato | Minimum par skill selon nb médecins |
-| **B** | Formule standard | Ophtalmo, Angio, Rhuma, ORL | Skill unique, ceil(Σ besoin) |
-| **C** | Skills par intervention | Bloc opératoire | Besoins définis par type d'intervention |
-| **D** | Sans skill requis | Admin | Capacité illimitée, ouvert à tous |
+**Fields**: `id`, `name`, `address`, `distance_type`
 
 ---
 
-## 1.3 Spécialités et Skills
+## 1.2 Table: `locations`
 
-Chaque spécialité a ses **skills propres**. Une secrétaire doit avoir le skill dans ses préférences pour être éligible.
+Departments/services within a site.
 
-### Skills de consultation
+| id | name | site | staffing_type | has_closing |
+|----|------|------|---------------|-------------|
+| `7c8abe96-...` | Ophtalmologie | La Vallée | B | ✓ |
+| `d82c55ee-...` | Dermatologie | La Vallée | A | ✗ |
+| `c3bd13...` | Angiologie | La Vallée | B | ✗ |
+| `0e1b31...` | Rhumatologie | La Vallée | B | ✗ |
+| `86f1047f-...` | Bloc opératoire | La Vallée | C | ✗ |
+| `7723c334-...` | Gastroentérologie | Vieille Ville | A | ✗ |
+| `043899a1-...` | Porrentruy | Porrentruy | B | ✓ |
+| `00000000-...0001` | Administratif | - | D | ✗ |
 
-| Spécialité | Skill Aide de salle | Skill Accueil |
-|------------|---------------------|---------------|
-| Gastroentérologie | Aide de salle Gastro | Accueil Gastro |
-| Dermatologie | Aide de salle Dermato | Accueil Dermato |
-| Ophtalmologie | - | Accueil Ophtalmo |
-| Angiologie | - | Accueil Angio |
-| Rhumatologie | - | Accueil Rhuma |
-| ORL | - | Accueil ORL |
-| Gynécologie | - | Accueil Gynéco |
+**Fields**: `id`, `name`, `site_id`, `staffing_type`, `specialty_id`, `has_closing`
 
-### Skills de fermeture
+### Staffing Types
 
-| Skill | Description |
+| Type | Description | Locations | Characteristic |
+|------|-------------|-----------|----------------|
+| **A** | Fixed Aide/Accueil ratio | Gastro, Dermato | Minimum per skill based on physician count |
+| **B** | Standard formula | Ophtalmo, Angio, Rhuma, ORL | Single skill, ceil(Σ requirement) |
+| **C** | Skills per procedure | Surgical block | Needs defined by procedure type |
+| **D** | No skill required | Admin | Unlimited capacity, open to all |
+
+---
+
+## 1.3 Table: `specialties`
+
+Medical specialties.
+
+**Fields**: `id`, `name`, `code`
+
+---
+
+## 1.4 Table: `skills` (UNIFIED)
+
+**All competencies are skills** - whether for consultations, surgical block, or closing roles.
+
+| id | name | skill_type | specialty_id |
+|----|------|------------|--------------|
+| `skill-accueil-ophtalmo` | Accueil Ophtalmo | consultation | ophtalmo |
+| `skill-accueil-gastro` | Accueil Gastro | consultation | gastro |
+| `skill-aide-gastro` | Aide de salle Gastro | consultation | gastro |
+| `skill-accueil-dermato` | Accueil Dermato | consultation | dermato |
+| `skill-aide-dermato` | Aide de salle Dermato | consultation | dermato |
+| `skill-instrumentiste` | Instrumentiste | surgical | - |
+| `skill-circulante` | Circulante | surgical | - |
+| `skill-aide-operatoire` | Aide opératoire | surgical | - |
+| `skill-aide-bloc-gastro` | Aide bloc gastro | surgical | gastro |
+| `skill-1r` | 1R (Première Responsabilité) | closing | - |
+| `skill-2f` | 2F (Deuxième Fermeture) | closing | - |
+| `skill-3f` | 3F (Troisième Fermeture) | closing | - |
+
+**Fields**: `id`, `name`, `skill_type`, `specialty_id`
+
+### Skill Types
+
+| skill_type | Description |
+|------------|-------------|
+| `consultation` | Skills for consultation locations (Accueil X, Aide de salle X) |
+| `surgical` | Skills for surgical block (Instrumentiste, Circulante, etc.) |
+| `closing` | Closing responsibility roles (1R, 2F, 3F) |
+
+---
+
+# 2. PEOPLE
+
+## 2.1 Table: `physicians`
+
+**Fields**: `id`, `first_name`, `last_name`, `specialty_id`, `staff_requirement`, `is_obstetrician`
+
+| Field | Description |
 |-------|-------------|
-| 1R | Première Responsabilité |
-| 2F | Deuxième Fermeture |
-| 3F | Troisième Fermeture (cas spécial Paul Jacquier) |
-
-### Skills de bloc opératoire
-
-Définis par la table `types_intervention_besoins_personnel`. Voir section Bloc Opératoire.
+| `staff_requirement` | Requirement coefficient (e.g., 1.0, 1.2, 1.5, 2.0) |
+| `is_obstetrician` | Exception: requirement = 0, not counted in calculation |
 
 ---
 
-# 2. PERSONNES
+## 2.2 Table: `staff_members`
 
-## 2.1 Médecins
+**Fields**: `id`, `first_name`, `last_name`, `is_active`, `has_flexible_schedule`, `days_per_week`, `prefers_admin`, `admin_half_days_target`
 
-**Champs** : id, nom, prenom, specialite_id, besoin_secretaires, is_obstetricienne
+### Schedule Types
 
-| Champ | Description |
-|-------|-------------|
-| `besoin_secretaires` | Coefficient de besoin (ex: 1.0, 1.2, 1.5, 2.0) |
-| `is_obstetricienne` | Exception : besoin = 0, ne compte pas dans le calcul |
+| Type | `has_flexible_schedule` | Data | Solver decides |
+|------|------------------------|------|----------------|
+| **Flexible** | `true` | `days_per_week` + absences | Which days + where |
+| **Fixed** | `false` | Predefined shifts in assignments | Only where |
 
 ---
 
-## 2.2 Secrétaires
+## 2.3 Preference Tables
 
-**Champs** : id, nom, prenom, active, horaire_flexible, nombre_jours_semaine, prefered_admin, nombre_demi_journees_admin
+Preferences determine **eligibility** AND **scoring**.
 
-### Deux types d'horaires
-
-| Type | `horaire_flexible` | Données | Solveur décide |
-|------|-------------------|---------|----------------|
-| **Flexible** | `true` | `nombre_jours_semaine` + absences | Quels jours + où |
-| **Fixe** | `false` | Shifts prédéfinis dans planning | Seulement où |
-
-### Préférences des secrétaires
-
-Les préférences déterminent l'**éligibilité** ET le **score**.
-
-| Table | Champs | Éligibilité |
+| Table | Fields | Eligibility |
 |-------|--------|-------------|
-| `preferences_site` | secretaire_id, site_id, priorite (P1-P4) | Sans préférence = **non éligible** |
-| `preferences_skill` | secretaire_id, skill_id, priorite (P1-P3) | Sans préférence = **non éligible** |
-| `preferences_medecin` | secretaire_id, medecin_id, priorite (P1-P2) | Optionnel (bonus) |
-| `preferences_besoin_operation` | secretaire_id, besoin_operation_id, priorite | Pour le bloc |
+| `staff_site_preferences` | staff_id, site_id, priority (P1-P4) | No preference = **not eligible** |
+| `staff_skill_preferences` | staff_id, skill_id, priority (P1-P3) | No preference = **not eligible** |
+| `staff_physician_preferences` | staff_id, physician_id, priority (P1-P2) | Optional (bonus) |
 
-### Secrétaires avec règles spéciales
-
-| UUID | Nom | Règle |
-|------|-----|-------|
-| `1e5339aa-5e82-4295-b918-e15a580b3396` | Florence Bron | Pas 2F le mardi |
-| `5d3af9e3-674b-48d6-b54f-bd84c9eee670` | Lucie Pratillo | Jamais 2F ni 3F |
-| `121dc7d9-99dc-46bd-9b6c-d240ac6dc6c8` | Paul Jacquier | Déclenche 3F si présent jeudi+vendredi |
-| `68e74e31-12a7-4fd3-836d-41e8abf57792` | Sara Bortolon | Bonus avec Dr. fda323f4 |
-| `324639fa-2e3d-4903-a143-323a17b0d988` | Mirlinda Hasani | Bonus avec Dr. fda323f4 |
+**Note**: Since skills are unified, `staff_skill_preferences` covers both consultation skills AND surgical skills.
 
 ---
 
-# 3. PLANNING UNIFIÉ
+## 2.4 Staff with Special Rules
 
-Table unique contenant le planning des médecins ET des secrétaires.
+| id | Name | Rule |
+|----|------|------|
+| `1e5339aa-...` | Florence Bron | No 2F on Tuesday |
+| `5d3af9e3-...` | Lucie Pratillo | Never 2F or 3F |
+| `121dc7d9-...` | Paul Jacquier | Triggers 3F requirement if present Thu+Fri |
+| `68e74e31-...` | Sara Bortolon | Bonus with Dr. fda323f4 |
+| `324639fa-...` | Mirlinda Hasani | Bonus with Dr. fda323f4 |
 
-**Champs** :
-- id, date, demi_journee (`matin` | `apres_midi`)
-- site_id
-- **type** : `medecin` | `secretaire`
-- **personne_id** : UUID du médecin ou de la secrétaire
-- skill_id (pour secrétaires en consultation)
-- operation_id, besoin_operation_id (pour bloc)
-- is_1r, is_2f, is_3f (rôles fermeture)
+---
 
-### Utilisation
+# 3. UNIFIED SCHEDULE
 
-| type | Rôle |
+## 3.1 Table: `assignments`
+
+Single table containing schedules for both physicians AND staff.
+
+**Fields**:
+- `id`, `date`, `period` (`morning` | `afternoon`)
+- `location_id`
+- **`type`**: `physician` | `staff`
+- **`person_id`**: UUID of physician or staff member
+- `skill_id` (for staff in consultations OR surgical block)
+- `procedure_id` (for surgical block, links to specific procedure)
+- `is_1r`, `is_2f`, `is_3f` (closing roles)
+
+### Usage
+
+| type | Role |
 |------|------|
-| `medecin` | **INPUT** - Planning des médecins (source des besoins) |
-| `secretaire` | **OUTPUT** - Assignations générées par le solveur |
+| `physician` | **INPUT** - Physician schedule (source of needs) |
+| `staff` | **OUTPUT** - Assignments generated by solver |
 
 ---
 
-# 4. BLOC OPÉRATOIRE
+# 4. SURGICAL BLOCK
 
-## 4.1 Opérations
+## 4.1 Table: `surgical_procedures`
 
-Planning des interventions chirurgicales.
+Schedule of surgical interventions.
 
-**Champs** : id, date, periode, type_intervention_id, medecin_id, salle_assignee
+**Fields**: `id`, `date`, `period`, `procedure_type_id`, `physician_id`, `operating_room`
 
-### Salles disponibles
+### Operating Rooms
 
-| Salle | Types d'intervention |
-|-------|---------------------|
-| salle_rouge | Chirurgie générale, Cataracte |
-| salle_verte | Chirurgie générale, Angiologie |
-| salle_jaune | Chirurgie générale |
-| salle_gastro | Endoscopies digestives |
-
-## 4.2 Types d'intervention
-
-Définition des interventions chirurgicales.
-
-**Champs** : id, nom, code, specialite
-
-## 4.3 Besoins en personnel par intervention
-
-Chaque type d'intervention définit les besoins en personnel.
-
-**Champs** : type_intervention_id, besoin_operation_id, nombre_requis
-
-**Exemple** :
-
-| Type d'intervention | Besoin | Nombre |
-|---------------------|--------|--------|
-| Chirurgie Cataracte | Instrumentiste | 1 |
-| Chirurgie Cataracte | Circulante | 1 |
-| Endoscopie digestive | Aide bloc gastro | 1 |
-| Endoscopie digestive | Circulante | 1 |
-| Chirurgie générale | Instrumentiste | 1 |
-| Chirurgie générale | Circulante | 1 |
-| Chirurgie générale | Aide opératoire | 1 |
-
-## 4.4 Besoins d'opération
-
-Rôles disponibles au bloc (équivalent des skills).
-
-| Code | Nom | Description |
-|------|-----|-------------|
-| INST | Instrumentiste | Prépare et passe les instruments |
-| CIRC | Circulante | Coordonne la salle, documentation |
-| AIDE_OP | Aide opératoire | Assiste le chirurgien |
-| AIDE_GASTRO | Aide bloc gastro | Spécifique endoscopies |
+| Room | Procedure Types |
+|------|-----------------|
+| red_room | General surgery, Cataract |
+| green_room | General surgery, Angiology |
+| yellow_room | General surgery |
+| gastro_room | Digestive endoscopies |
 
 ---
 
-# 5. ABSENCES ET DISPONIBILITÉS
+## 4.2 Table: `procedure_types`
 
-## 5.1 Absences (horaire flexible)
+Definition of surgical procedures.
 
-Pour les secrétaires avec `horaire_flexible = true`.
+**Fields**: `id`, `name`, `code`, `specialty_id`
 
-**Champs** : secretaire_id, date, periode (`matin` | `apres_midi` | null = jour complet)
+---
 
-**Exemple** :
+## 4.3 Table: `procedure_type_skills`
+
+Each procedure type defines required skills (personnel needs).
+
+**Fields**: `procedure_type_id`, `skill_id`, `quantity`
+
+**Example**:
+
+| Procedure Type | Skill | Quantity |
+|----------------|-------|----------|
+| Cataract Surgery | Instrumentiste | 1 |
+| Cataract Surgery | Circulante | 1 |
+| Digestive Endoscopy | Aide bloc gastro | 1 |
+| Digestive Endoscopy | Circulante | 1 |
+| General Surgery | Instrumentiste | 1 |
+| General Surgery | Circulante | 1 |
+| General Surgery | Aide opératoire | 1 |
+
+**Note**: Skills here reference the unified `skills` table (skill_type = 'surgical').
+
+---
+
+# 5. AVAILABILITY
+
+## 5.1 Table: `staff_absences`
+
+For staff with `has_flexible_schedule = true`.
+
+**Fields**: `staff_id`, `date`, `period` (`morning` | `afternoon` | null = full day)
+
+**Example**:
 ```
-Marie (flexible, 4 jours/semaine) :
-  - Absence mercredi (jour complet)
-  - Absence vendredi matin
+Marie (flexible, 4 days/week):
+  - Absence Wednesday (full day)
+  - Absence Friday morning
 
-→ Jours disponibles : lundi, mardi, jeudi, vendredi PM, samedi
-→ Solveur choisit 4 jours parmi ceux-ci
+→ Available: Monday, Tuesday, Thursday, Friday PM, Saturday
+→ Solver chooses 4 days from these
 ```
 
-## 5.2 Shifts fixes (horaire fixe)
+## 5.2 Fixed Shifts
 
-Pour les secrétaires avec `horaire_flexible = false`, les shifts sont prédéfinis dans la table planning.
+For staff with `has_flexible_schedule = false`, shifts are predefined in the assignments table.
 
-**Exemple** :
+**Example**:
 ```
-Pierre (fixe) - entrées dans planning (type='secretaire', site=null) :
-  - Lundi matin
-  - Lundi après-midi
-  - Mardi matin
-  - Jeudi après-midi
+Pierre (fixed) - entries in assignments (type='staff', location=null):
+  - Monday morning
+  - Monday afternoon
+  - Tuesday morning
+  - Thursday afternoon
 
-→ Solveur DOIT assigner Pierre sur ces 4 créneaux
-→ Solveur choisit le site/emplacement pour chaque créneau
+→ Solver MUST assign Pierre on these 4 slots
+→ Solver chooses the location for each slot
 ```
 
 ---
 
-# 6. IDs DE RÉFÉRENCE
+# 6. REFERENCE IDs
 
-## Sites
+## Locations
 
-| ID | Nom |
-|----|-----|
+| ID | Name |
+|----|------|
 | `00000000-0000-0000-0000-000000000001` | Administratif |
 | `7723c334-d06c-413d-96f0-be281d76520d` | Vieille Ville (Gastro) |
 | `7c8abe96-0a6b-44eb-857f-ad69036ebc88` | Ophtalmologie |
@@ -290,4 +302,25 @@ Pierre (fixe) - entrées dans planning (type='secretaire', site=null) :
 
 ---
 
-*Voir aussi : 2_NEEDS_CALCULATION.md, 3_CONSTRAINTS.md, 4_OUTPUT.md*
+# 7. TABLE SUMMARY
+
+| Table | Description |
+|-------|-------------|
+| `sites` | Geographic locations |
+| `locations` | Departments within sites |
+| `specialties` | Medical specialties |
+| `skills` | **Unified** competencies (consultation + surgical + closing) |
+| `physicians` | Doctors with staff requirements |
+| `staff_members` | Medical secretaries/staff |
+| `staff_site_preferences` | Site eligibility & priority |
+| `staff_skill_preferences` | Skill eligibility & priority |
+| `staff_physician_preferences` | Optional physician bonuses |
+| `assignments` | **Unified** schedule (physicians + staff) |
+| `surgical_procedures` | Scheduled surgeries |
+| `procedure_types` | Surgery type definitions |
+| `procedure_type_skills` | Skills required per procedure |
+| `staff_absences` | Unavailability periods |
+
+---
+
+*See also: 2_NEEDS_CALCULATION.md, 3_CONSTRAINTS.md, 4_OUTPUT.md*
